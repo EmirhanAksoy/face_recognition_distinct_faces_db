@@ -1,7 +1,11 @@
 FROM python:3.8-slim
 
 RUN apt-get update && \
-apt-get upgrade -y
+  apt-get upgrade -y \
+  && apt-get -y install gcc \
+  && apt-get -y install g++ \
+  && apt-get -y install unixodbc unixodbc-dev \
+  && apt-get clean
 
 RUN apt-get install -y --fix-missing \
     build-essential \
@@ -40,6 +44,34 @@ RUN cd /root/dlib/ && \
 RUN cd ~ && \
     pip3 install flask flask-cors
 
+RUN apt-get install -y tdsodbc unixodbc-dev
+RUN apt install unixodbc -y
+RUN apt-get clean -y
+ADD odbcinst.ini /etc/odbcinst.ini
+
+# UPGRADE pip3
+RUN pip3 install --upgrade pip
+
+# DEPENDECES FOR DOWNLOAD ODBC DRIVER
+RUN apt-get install apt-transport-https 
+RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add -
+RUN curl https://packages.microsoft.com/config/debian/10/prod.list > /etc/apt/sources.list.d/mssql-release.list
+RUN apt-get update
+
+# INSTALL ODBC DRIVER
+RUN ACCEPT_EULA=Y apt-get install msodbcsql17 --assume-yes
+
+# CONFIGURE ENV FOR /bin/bash TO USE MSODBCSQL17
+RUN echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bash_profile 
+RUN echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bashrc 
+  
+RUN pip3 install --upgrade Pillow
+
+# Install MSSQL connection library
+RUN pip3 install pyodbc    
+
+# Install uuid library
+RUN pip3 install uuid
 
 # Install Face-Recognition Python Library
 RUN cd ~ && \
