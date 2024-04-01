@@ -1,27 +1,21 @@
 from os import listdir, remove
 from os.path import isfile, join, splitext
-
 import face_recognition
-from flask import Flask, render_template, request, redirect, flash ,jsonify
-from werkzeug.utils import secure_filename
+from flask import Flask , request ,jsonify
 from flask_cors import CORS
 from werkzeug.exceptions import BadRequest
 import io
-import base64 
-from base64 import * 
 from PIL import Image    
 import logging
 import pyodbc
 import uuid 
 import numpy
-import re
 import os
-import imghdr
 
 
-os.makedirs(os.path.join(os.getcwd(), 'uploads'), exist_ok=True)
+os.makedirs(os.path.join(os.getcwd(), 'faces'), exist_ok=True)
 
-UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
+FACES_FOLDER_PATH = os.path.join(os.getcwd(), 'faces')
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,
@@ -64,10 +58,6 @@ app = Flask(__name__)
 CORS(app)
 
 # <Picture functions> #
-
-
-
-
 
 # Define the detect_faces_in_image method
 def detect_faces_in_image_new(file_stream):
@@ -115,7 +105,7 @@ def insert_newly_found_images(img, faces, currentFaceLocation, unique_idx):
     faceImage = img[top:bottom, left:right]
     final = Image.fromarray(faceImage)
     final.seek(0)
-    facePath = os.path.join(UPLOAD_FOLDER,unique_idx)+'.png'
+    facePath = os.path.join(FACES_FOLDER_PATH,unique_idx)+'.png'
     final.save(facePath)
     cursor.execute("INSERT INTO Faces (UniqueId, Encoding) VALUES (?, ?)",
                                 unique_idx, facePath)
