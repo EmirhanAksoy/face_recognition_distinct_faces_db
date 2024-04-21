@@ -70,7 +70,7 @@ def detect_faces_in_image_new(file_stream):
     faceCountOnUploadedImage = len(face_locations)
     faces = []
 
-    cursor.execute("SELECT UniqueId, Encoding FROM Faces")
+    cursor.execute("SELECT UniqueId, FacePath FROM Faces")
     existing_faces = cursor.fetchall()
     if faceCountOnUploadedImage:
         for i in range(len(face_locations)):
@@ -107,7 +107,7 @@ def insert_newly_found_images(img, faces, currentFaceLocation, unique_idx):
     final.seek(0)
     facePath = os.path.join(FACES_FOLDER_PATH,unique_idx)+'.png'
     final.save(facePath)
-    cursor.execute("INSERT INTO Faces (UniqueId, Encoding) VALUES (?, ?)",
+    cursor.execute("INSERT INTO Faces (UniqueId, FacePath) VALUES (?, ?)",
                                 unique_idx, facePath)
     dbConnection.commit()
     faces.append({"id": unique_idx, "dist": 0.0})
