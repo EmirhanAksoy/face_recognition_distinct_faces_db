@@ -83,8 +83,6 @@ def detect_faces_in_image_new(file_stream):
                     singleFaceImageFromDb = face_recognition.load_image_file(image_path)
                     singleImageEndcodingFromDb = face_recognition.face_encodings(singleFaceImageFromDb)[0]
                     distanceBetweenDbAndUploadImage = face_recognition.face_distance([numpy.array(singleImageEndcodingFromDb)], numpy.array(singleFaceEncodingFromUploadImage))[0]
-                    logmessage = "Distance calculated as > "+str(distanceBetweenDbAndUploadImage)
-                    logging.info(logmessage)
                     # If the distance is below a threshold, consider it a match
                     if distanceBetweenDbAndUploadImage < 0.6:
                         matchFound = True
