@@ -81,13 +81,15 @@ def detect_faces_in_image_new(file_stream):
                 matchFound = False
                 for unique_id, image_path in existing_faces:
                     singleFaceImageFromDb = face_recognition.load_image_file(image_path)
-                    singleImageEndcodingFromDb = face_recognition.face_encodings(singleFaceImageFromDb)[0]
-                    distanceBetweenDbAndUploadImage = face_recognition.face_distance([numpy.array(singleImageEndcodingFromDb)], numpy.array(singleFaceEncodingFromUploadImage))[0]
-                    # If the distance is below a threshold, consider it a match
-                    if distanceBetweenDbAndUploadImage < 0.6:
-                        matchFound = True
-                        faces.append({"id": unique_id, "dist": distanceBetweenDbAndUploadImage})
-                        break
+                    singleFaceImageEncodings = face_recognition.face_encodings(singleFaceImageFromDb)
+                    if len(singleFaceImageEncodings) :
+                        singleImageEndcodingFromDb = singleFaceImageEncodings[0]
+                        distanceBetweenDbAndUploadImage = face_recognition.face_distance([numpy.array(singleImageEndcodingFromDb)], numpy.array(singleFaceEncodingFromUploadImage))[0]
+                        # If the distance is below a threshold, consider it a match
+                        if distanceBetweenDbAndUploadImage < 0.6:
+                            matchFound = True
+                            faces.append({"id": unique_id, "dist": distanceBetweenDbAndUploadImage})
+                            break
                 # If nonMatchingFaceLocations list count greater than 0 insert missing faces into db and return list
                 if not matchFound:
                     unique_idx = str(uuid.uuid4())
@@ -256,11 +258,5 @@ def extract_image(request):
 
 
 if __name__ == "__main__":
-    print("Starting by generating encodings for found images...")
-    # Calculate known faces
-    faces_dict = get_faces_dict(persistent_faces)
-    print(faces_dict)
-
-    # Start app
     print("Starting WebServer...")
     app.run(host='0.0.0.0', port=8080, debug=False)
