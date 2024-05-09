@@ -24,6 +24,7 @@ dbConnection = {}
 max_retries = 5
 retry_interval_seconds = 5
 retry_count = 0
+image_encodings = []
 
 os.makedirs(os.path.join(os.getcwd(), 'faces'), exist_ok=True)
 
@@ -44,12 +45,10 @@ logging.info(pyodbc.drivers())
 
 # Print the list of SQL Server drivers
 for driver in sql_server_drivers:
-    logging.error(driver)
+    logging.info(driver)
 
 
 logging.info("Waiting for database connection ...")
-
-
 
 while retry_count < max_retries:
     try:
@@ -57,6 +56,7 @@ while retry_count < max_retries:
                       ';DATABASE=' + db_name +
                       ';UID=' + db_username +
                       ';PWD=' + db_password)
+        print("Connected to database")
         break  
     except pyodbc.Error as ex:
         print("Failed to connect to the database:", ex)
@@ -70,8 +70,6 @@ if retry_count == max_retries:
 
 cursor = dbConnection.cursor()
 
-# Global storage for images
-image_encodings = []
 
 def load_image_encodings(cursor, image_encodings):
     cursor.execute("SELECT FaceId, FacePath FROM Faces")
@@ -89,8 +87,6 @@ def load_image_encodings(cursor, image_encodings):
             "face_path" : face_path,
             "image_encoding" : image_encoding
             })
-
-load_image_encodings(cursor, image_encodings)  
 
 def detect_faces_in_image_new(file_stream):
     
@@ -142,18 +138,9 @@ def insert_newly_found_images(img, faces, currentFaceLocation,single_face_encodi
          "image_encoding" : single_face_encoding
     })
 
-def is_picture(filename):
-    image_extensions = {'png', 'jpg', 'jpeg', 'gif'}
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in image_extensions
+load_image_encodings(cursor, image_encodings)  
 
-def get_all_picture_files(path):
-    files_in_dir = [join(path, f) for f in listdir(path) if isfile(join(path, f))]
-    return [f for f in files_in_dir if is_picture(f)]
-
-def remove_file_ext(filename):
-    return splitext(filename.rsplit('/', 1)[-1])[0]
-
-# <Controller>
+# <Controllers>
 
 @app.route('/detect_faces', methods=['POST'])
 def detect_faces():
@@ -174,8 +161,6 @@ def detect_faces():
 @app.route('/get_cached_encodings', methods=['GET'])
 def get_cached_encodings():
     return jsonify(image_encodings)
-
-
 
 if __name__ == "__main__":
     print("Starting WebServer...")
