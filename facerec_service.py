@@ -1,17 +1,29 @@
-from os import listdir, remove
+from os import listdir
 from os.path import isfile, join, splitext
 import face_recognition
 from flask import Flask , request ,jsonify
 from flask_cors import CORS
-from werkzeug.exceptions import BadRequest
-import io
 from PIL import Image    
 import logging
 import pyodbc
 import uuid 
 import numpy
 import os
+import time
 
+# Create flask app
+app = Flask(__name__)
+CORS(app)
+
+
+db_server = 'tcp:sqlserver'
+db_name = 'WhoIs'
+db_username = 'sa'
+db_password = 'Admin123*_!'
+dbConnection = {}
+max_retries = 5
+retry_interval_seconds = 5
+retry_count = 0
 
 os.makedirs(os.path.join(os.getcwd(), 'faces'), exist_ok=True)
 
@@ -34,32 +46,52 @@ logging.info(pyodbc.drivers())
 for driver in sql_server_drivers:
     logging.error(driver)
 
-# Your database connection parameters
-db_server = 'tcp:sqlserver'
-db_name = 'WhoIs'
-db_username = 'sa'
-db_password = 'Admin123*_!'
 
-# Establish a connection to the database
-dbConnection = pyodbc.connect('DRIVER={ODBC Driver 17 for SQL Server};SERVER=' + db_server +
+logging.info("Waiting for database connection ...")
+
+
+
+while retry_count < max_retries:
+    try:
+        dbConnection = pyodbc.connect('DRIVER={ODBC Driver 17 for SQL Server};SERVER=' + db_server +
                       ';DATABASE=' + db_name +
                       ';UID=' + db_username +
                       ';PWD=' + db_password)
+        break  
+    except pyodbc.Error as ex:
+        print("Failed to connect to the database:", ex)
+        print("Retrying in {} seconds...".format(retry_interval_seconds))
+        retry_count += 1
+        time.sleep(retry_interval_seconds)
 
-# Create a cursor object to execute SQL queries
+if retry_count == max_retries:
+    print("Failed to establish a connection after {} retries. Exiting...".format(max_retries))
+    exit()
+
 cursor = dbConnection.cursor()
 
 # Global storage for images
-faces_dict = {}
-persistent_faces = "/root/faces"
+image_encodings = []
 
-# Create flask app
-app = Flask(__name__)
-CORS(app)
+def load_image_encodings(cursor, image_encodings):
+    cursor.execute("SELECT FaceId, FacePath FROM Faces")
+    existing_faces = cursor.fetchall()
 
-# <Picture functions> #
+    if len(existing_faces) :
+      for face_id, face_path in existing_faces:
+         singleFaceImageFromDb = face_recognition.load_image_file(face_path)
+         singleFaceImageEncodings = face_recognition.face_encodings(singleFaceImageFromDb)
+         if len(singleFaceImageEncodings) :
+            singleImageEndcodingFromDb = singleFaceImageEncodings[0]
+            image_encoding = [numpy.array(singleImageEndcodingFromDb)]
+            image_encodings.append({
+            "face_id" : face_id,
+            "face_path" : face_path,
+            "image_encoding" : image_encoding
+            })
 
-# Define the detect_faces_in_image method
+load_image_encodings(cursor, image_encodings)  
+
 def detect_faces_in_image_new(file_stream):
     
     img = face_recognition.load_image_file(file_stream)
@@ -69,124 +101,60 @@ def detect_faces_in_image_new(file_stream):
     # Initialize variables
     faceCountOnUploadedImage = len(face_locations)
     faces = []
-
-    cursor.execute("SELECT UniqueId, FacePath FROM Faces")
-    existing_faces = cursor.fetchall()
+   
     if faceCountOnUploadedImage:
         for i in range(len(face_locations)):
             currentFaceLocation = face_locations[i]
-            singleFaceEncodingFromUploadImage = face_recognition.face_encodings(img, [currentFaceLocation])
-            if len(existing_faces) :
-                # Find if any match exists in db records
+            single_face_encoding_from_uploaded_image = face_recognition.face_encodings(img, [currentFaceLocation])
+            single_face_encoding_array =  numpy.array(single_face_encoding_from_uploaded_image)
+            if len(image_encodings) :
                 matchFound = False
-                for unique_id, image_path in existing_faces:
-                    singleFaceImageFromDb = face_recognition.load_image_file(image_path)
-                    singleFaceImageEncodings = face_recognition.face_encodings(singleFaceImageFromDb)
-                    if len(singleFaceImageEncodings) :
-                        singleImageEndcodingFromDb = singleFaceImageEncodings[0]
-                        distanceBetweenDbAndUploadImage = face_recognition.face_distance([numpy.array(singleImageEndcodingFromDb)], numpy.array(singleFaceEncodingFromUploadImage))[0]
+                for image_encoding_item in image_encodings:
+                    distanceBetweenDbAndUploadImage = face_recognition.face_distance(image_encoding_item["image_encoding"],single_face_encoding_array)[0]
                         # If the distance is below a threshold, consider it a match
-                        if distanceBetweenDbAndUploadImage < 0.6:
-                            matchFound = True
-                            faces.append({"id": unique_id, "dist": distanceBetweenDbAndUploadImage})
-                            break
+                    if distanceBetweenDbAndUploadImage < 0.6:
+                        matchFound = True
+                        faces.append({"id": image_encoding_item["face_id"], "dist": distanceBetweenDbAndUploadImage})
+                        break
                 # If nonMatchingFaceLocations list count greater than 0 insert missing faces into db and return list
                 if not matchFound:
-                    unique_idx = str(uuid.uuid4())
-                    insert_newly_found_images(img, faces, currentFaceLocation, unique_idx)
+                    insert_newly_found_images(img, faces, currentFaceLocation,single_face_encoding_array)
             else :
-               unique_idx = str(uuid.uuid4())
-               insert_newly_found_images(img, faces, currentFaceLocation, unique_idx)             
+               insert_newly_found_images(img, faces, currentFaceLocation,single_face_encoding_array)             
                
     return {"count": faceCountOnUploadedImage, "faces": faces}
 
-def insert_newly_found_images(img, faces, currentFaceLocation, unique_idx):
+def insert_newly_found_images(img, faces, currentFaceLocation,single_face_encoding):
+    unique_face_id = str(uuid.uuid4())
     top, right, bottom, left = currentFaceLocation
     faceImage = img[top:bottom, left:right]
     final = Image.fromarray(faceImage)
     final.seek(0)
-    facePath = os.path.join(FACES_FOLDER_PATH,unique_idx)+'.png'
-    final.save(facePath)
-    cursor.execute("INSERT INTO Faces (UniqueId, FacePath) VALUES (?, ?)",
-                                unique_idx, facePath)
+    face_path = os.path.join(FACES_FOLDER_PATH,unique_face_id)+'.png'
+    final.save(face_path)
+    cursor.execute("INSERT INTO Faces (FaceId, FacePath) VALUES (?, ?)",
+                                unique_face_id, face_path)
     dbConnection.commit()
-    faces.append({"id": unique_idx, "dist": 0.0})
-
+    faces.append({"id": unique_face_id, "dist": 0.0})
+    image_encodings.append({
+         "face_id" : unique_face_id,
+         "face_path" : face_path,
+         "image_encoding" : single_face_encoding
+    })
 
 def is_picture(filename):
     image_extensions = {'png', 'jpg', 'jpeg', 'gif'}
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in image_extensions
 
-
 def get_all_picture_files(path):
     files_in_dir = [join(path, f) for f in listdir(path) if isfile(join(path, f))]
     return [f for f in files_in_dir if is_picture(f)]
 
-
 def remove_file_ext(filename):
     return splitext(filename.rsplit('/', 1)[-1])[0]
 
-def calc_face_encoding(image):
-    # Currently only use first face found on picture
-    loaded_image = face_recognition.load_image_file(image)
-    faces = face_recognition.face_encodings(loaded_image)
-
-    # If more than one face on the given image was found -> error
-    if len(faces) > 1:
-        raise Exception(
-            "Found more than one face in the given training image.")
-
-    # If none face on the given image was found -> error
-    if not faces:
-        raise Exception("Could not find any face in the given training image.")
-
-    return faces[0]
-
-
-def get_faces_dict(path):
-    image_files = get_all_picture_files(path)
-    return dict([(remove_file_ext(image), calc_face_encoding(image))
-        for image in image_files])
-
-
-def detect_faces_in_image(file_stream):
-    # Load the uploaded image file
-    img = face_recognition.load_image_file(file_stream)
-
-    # Get face encodings for any faces in the uploaded image
-    uploaded_faces = face_recognition.face_encodings(img)
-
-    # Defaults for the result object
-    faces_found = len(uploaded_faces)
-    faces = []
-
-    if faces_found:
-        face_encodings = list(faces_dict.values())
-        for uploaded_face in uploaded_faces:
-            match_results = face_recognition.compare_faces(
-                face_encodings, uploaded_face)
-            for idx, match in enumerate(match_results):
-                if match:
-                    match = list(faces_dict.keys())[idx]
-                    match_encoding = face_encodings[idx]
-                    dist = face_recognition.face_distance([match_encoding],
-                            uploaded_face)[0]
-                    faces.append({
-                        "id": match,
-                        "dist": dist
-                    })
-
-    return {
-        "count": faces_found,
-        "faces": faces
-    }
-
-# <Picture functions> #
-
 # <Controller>
 
-
-# Define the endpoint to detect faces in an image
 @app.route('/detect_faces', methods=['POST'])
 def detect_faces():
     # Check if a valid image file was uploaded
@@ -203,58 +171,10 @@ def detect_faces():
     # Return the detected faces information
     return jsonify(faces_info)
 
+@app.route('/get_cached_encodings', methods=['GET'])
+def get_cached_encodings():
+    return jsonify(image_encodings)
 
-@app.route('/', methods=['POST'])
-def web_recognize():
-    file = extract_image(request)
-
-    if file and is_picture(file.filename):
-        # The image file seems valid! Detect faces and return the result.
-        return jsonify(detect_faces_in_image(file))
-    else:
-        raise BadRequest("Given file is invalid!")
-
-
-@app.route('/faces', methods=['GET', 'POST', 'DELETE'])
-def web_faces():
-    # GET
-    if request.method == 'GET':
-        return jsonify(list(faces_dict.keys()))
-
-    # POST/DELETE
-    file = extract_image(request)
-    if 'id' not in request.args:
-        raise BadRequest("Identifier for the face was not given!")
-
-    if request.method == 'POST':
-        app.logger.info('%s loaded', file.filename)
-        # HINT jpg included just for the image check -> this is faster then passing boolean var through few methods
-        # TODO add method for extension persistence - do not forget abut the deletion
-        file.save("{0}/{1}.jpg".format(persistent_faces, request.args.get('id')))
-        try:
-            new_encoding = calc_face_encoding(file)
-            faces_dict.update({request.args.get('id'): new_encoding})
-        except Exception as exception:
-            raise BadRequest(exception)
-
-    elif request.method == 'DELETE':
-        faces_dict.pop(request.args.get('id'))
-        remove("{0}/{1}.jpg".format(persistent_faces, request.args.get('id')))
-
-    return jsonify(list(faces_dict.keys()))
-
-
-def extract_image(request):
-    # Check if a valid image file was uploaded
-    if 'file' not in request.files:
-        raise BadRequest("Missing file parameter!")
-
-    file = request.files['file']
-    if file.filename == '':
-        raise BadRequest("Given file is invalid")
-
-    return file
-# </Controller>
 
 
 if __name__ == "__main__":
