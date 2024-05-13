@@ -1,48 +1,37 @@
-# Face Recognition - Docker image
+# Face Recognition Service
 
-This project provides a docker image which offers a web service to recognize known faces on images. It's based on the great [ageitgey/face_recognition](https://github.com/ageitgey/face_recognition) project and just add a web service using the Python `face_recognition`-library.
+This repository contains a face recognition service written in Python. This is a forked version of the original repository, which can be found [here](https://github.com/JanLoebel/face_recognition).
 
-<a href="https://www.buymeacoffee.com/JanLoebel" rel="Buy me a coffee!">![Foo](https://cdn.buymeacoffee.com/buttons/default-orange.png)</a>
+## Docker
 
-## Get started
+To run the face recognition service using Docker, follow these steps:
 
-### Build the Docker image
+1. Clone this repository to your local machine:
 
-Start by building the docker image with a defined name. This can take a while.
+    ```bash
+    git clone https://github.com/EmirhanAksoy/face_recognition_distinct_faces_db.git
+    ```
 
-```bash
-docker build -t facerec_service .
-```
+2. Build the Docker image:
 
-### Run the Docker image
+    ```bash
+    docker build -t face_service .
+    ```
 
-Start the image and forward port 8080. Optionally bind a local directory to `/root/faces` to provide a location for predefined images which will be registered at start time.
+    This command will build the Docker image with the tag `face_service`.
 
-```bash
-docker run -d -p8080:8080 -v faces:/root/faces facerec_service
-```
+3. Run a Docker container from the `face_service` image:
 
-## Features
+    ```bash
+    docker run --name face-service-container -p 8080:8080 face_service
+    ```
 
-### Register known faces
+4. The face recognition service will now be accessible at `http://localhost:8080`.
 
-Simple `POST` an image-file to the `/faces` endpoint and provide an identifier.
-`curl -X POST -F "file=@person1.jpg" http://localhost:8080/faces?id=person1`
+## Configuration
 
-### Read registered faces
+If you need to customize the service or any configurations, you can modify the relevant files within the repository.
 
-Simple `GET` the `/register` endpoint.
-`curl http://localhost:8080/faces`
+## License
 
-### Identify faces on image
-
-Simple `POST` an image-file to the web service.
-`curl -X POST -F "file=@person1.jpg" http://localhost:8080/`
-
-## Examples
-
-In the `examples`-directory there is currently only one example that shows how to use the Raspberry Pi-Camera module to capture an image and `POST` it to the `Face Recognition - Docker image` to check for known faces.
-
-## Notes
-
-I'm not a Python expert, so I'm pretty sure you can optimize the Python code further :) Please feel free to send PR's or open issues.
+This project is licensed under the [MIT License](LICENSE).
